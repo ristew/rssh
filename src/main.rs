@@ -34,18 +34,33 @@ fn process_line(line: &String) -> String {
     if cmds.len() == 0 {
         return ret;
     }
-    ret = process(
-        String::from(cmds[0].trim())
-            .split(' ')
-            .collect::<Vec<&str>>());
-    for i in 1..cmds.len() {
+    if cmds.len() == 1 {
+        ret = process(
+            String::from(cmds[0].trim())
+                .split(' ')
+                .collect::<Vec<&str>>());
+        return ret;
+    }
+    ret = execute_p(String::from(cmds[0].trim())
+                        .split(' ')
+                        .collect::<Vec<&str>>(),
+                        None,
+                        true);
+    for i in 1..cmds.len() - 1 {
         let input = ret;
         ret = execute_p(
             String::from(cmds[i].trim())
                 .split(' ')
-                .collect::<Vec<&str>>(), Some(input));
+                .collect::<Vec<&str>>(), 
+                Some(input),
+                true);
     }
-    ret
+    let input = ret;
+    execute_p(String::from(cmds[cmds.len() - 1].trim())
+                .split(' ')
+                .collect::<Vec<&str>>(),
+                Some(input),
+                false)
 }
 
 fn process(words: Vec<&str>) -> String {
@@ -56,10 +71,10 @@ fn process(words: Vec<&str>) -> String {
 }
     
 fn execute(words: Vec<&str>) -> String {
-    execute_p(words, None)
+    execute_p(words, None, false)
 }
 
-fn execute_p(words: Vec<&str>, pin: Option<String>) -> String {
+fn execute_p(words: Vec<&str>, pin: Option<String>, piped: bool) -> String {
     let mut command;    
     let mut input: Option<String>;
 
@@ -92,7 +107,10 @@ fn execute_p(words: Vec<&str>, pin: Option<String>) -> String {
         },
     };
     // all output is piped
-    command.stdout(Stdio::piped());
+    if piped {
+        command.stdout(Stdio::piped());
+    }
+
     let mut child: Child; 
     match command.spawn() {
         Ok(c) => child = c,
@@ -110,16 +128,8 @@ fn wait_child_inp(child: &mut Child, input: String) -> String {
         Some(ref mut stdin) => stdin.write_all(input.as_bytes()).unwrap(),
         None => return String::from("failed to find child stdin"),
     };
-    child.wait().unwrap();
 
-    let mut buf: String = String::new();
-    match child.stdout {
-        Some(ref mut out) => {
-            out.read_to_string(&mut buf).unwrap();
-        },
-        None => {},
-    }
-    buf
+    wait_child(child)
 }
 
 fn wait_child(child: &mut Child) -> String {
