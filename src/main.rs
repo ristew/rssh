@@ -1,8 +1,17 @@
+/**
+ * THINGS THAT THIS NEEDS
+ * Directional operators (<, >)
+ * backgrounding
+ * an environment
+ * the sh language
+ * more builtins
+ * how to support less/man/vim etc
+ */
 extern crate copperline;
 
 use std::process::*;
 use copperline::Copperline;
-use std::io::{Write, Read};
+use std::io::{stdout, Write, Read};
 
 fn main() {
     let mut cl = Copperline::new();
@@ -10,6 +19,7 @@ fn main() {
         match cl.read_line("$") {
             Ok(line) => {
                 print!("{}", process_line(&line));
+                stdout().flush().unwrap();
                 cl.add_history(line);
             },
             _       => {},
@@ -18,6 +28,7 @@ fn main() {
 }
 
 fn process_line(line: &String) -> String {
+    // list of processes to run, with input fed from output sequentially
     let cmds = line.trim().split('|').collect::<Vec<&str>>();
     let mut ret = String::new();
     if cmds.len() == 0 {
@@ -55,6 +66,7 @@ fn execute_p(words: Vec<&str>, pin: Option<String>) -> String {
     let cwords = words.clone();
     let mut worditer = cwords.into_iter();
     match worditer.next() {
+        // builtins parsed here
         Some("exit")  => exit(0),
         Some("cd")    => {
             if words.len() == 1 {
@@ -79,6 +91,7 @@ fn execute_p(words: Vec<&str>, pin: Option<String>) -> String {
             input = None;
         },
     };
+    // all output is piped
     command.stdout(Stdio::piped());
     let mut child: Child; 
     match command.spawn() {
