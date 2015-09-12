@@ -1,6 +1,6 @@
 /**
  * THINGS THAT THIS NEEDS
- * Directional operators (<, >)
+ * Directional operators (<)
  * backgrounding
  * an environment
  * the sh language
@@ -27,10 +27,19 @@ fn main() {
     }
 }
 
+macro_rules! words {
+    ($s:expr) => (String::from($s.trim()).split(' ').collect::<Vec<&str>>());
+}
+
+//this is big and icky. it should be modularized.
 fn process_line(line: &String, force_piped: bool) -> String {
-    // list of processes to run, with input fed from output sequentially
     if line.contains(">") {
         let line_file = line.trim().split('>').collect::<Vec<&str>>();
+        //probably need to use actual fds but that requires unsafe
+        if line_file[1].trim() == "/dev/null" {
+            process_line(&String::from(line_file[0]), true);
+            return String::new();
+        }
         let mut file = match File::open(line_file[1].trim()) {
             Ok(f) => f,
             Err(_) => {
@@ -46,35 +55,24 @@ fn process_line(line: &String, force_piped: bool) -> String {
         return String::new();
     }
 
+    //list of processes to run, with input fed from output sequentially
     let cmds = line.trim().split('|').collect::<Vec<&str>>();
     let is_piped = force_piped || cmds.len() > 1;
-    let mut ret = String::new();
     if cmds.len() == 0 {
-        return ret;
+        return String::new();
     }
-    ret = execute_p(String::from(cmds[0].trim())
-                        .split(' ')
-                        .collect::<Vec<&str>>(),
-                        None,
-                        is_piped);
+
+    let mut ret = execute_p(words!(cmds[0]), None, is_piped);
     if cmds.len() == 1 {
         return ret;
     }
+
     for i in 1..cmds.len() - 1 {
         let input = ret;
-        ret = execute_p(
-            String::from(cmds[i].trim())
-                .split(' ')
-                .collect::<Vec<&str>>(), 
-                Some(input),
-                true);
+        ret = execute_p(words!(cmds[i]), Some(input), true);
     }
     let input = ret;
-    execute_p(String::from(cmds[cmds.len() - 1].trim())
-                .split(' ')
-                .collect::<Vec<&str>>(),
-                Some(input),
-                force_piped)
+    execute_p(words!(cmds[cmds.len() - 1]), Some(input), force_piped)
 }
 
 fn execute_p(words: Vec<&str>, pin: Option<String>, piped: bool) -> String {
@@ -84,7 +82,7 @@ fn execute_p(words: Vec<&str>, pin: Option<String>, piped: bool) -> String {
     let cwords = words.clone();
     let mut worditer = cwords.into_iter();
     match worditer.next() {
-        // builtins parsed here
+        //builtins parsed here
         Some("exit")  => exit(0),
         Some("cd")    => {
             if words.len() == 1 {
@@ -109,7 +107,7 @@ fn execute_p(words: Vec<&str>, pin: Option<String>, piped: bool) -> String {
             input = None;
         },
     };
-    // all output is piped
+
     if piped {
         command.stdout(Stdio::piped());
     }
@@ -136,6 +134,7 @@ fn wait_child_inp(child: &mut Child, input: String) -> String {
 }
 
 fn wait_child(child: &mut Child) -> String {
+    //handle this better
     child.wait().unwrap();
 
     let mut buf: String = String::new();
