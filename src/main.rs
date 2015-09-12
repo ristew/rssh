@@ -5,20 +5,20 @@
  * an environment
  * the sh language
  * more builtins
- * how to support less/man/vim etc
  */
 extern crate copperline;
 
 use std::process::*;
 use copperline::Copperline;
 use std::io::{stdout, Write, Read};
+use std::fs::File;
 
 fn main() {
     let mut cl = Copperline::new();
     loop {
         match cl.read_line("$") {
             Ok(line) => {
-                print!("{}", process_line(&line));
+                print!("{}", process_line(&line, false));
                 stdout().flush().unwrap();
                 cl.add_history(line);
             },
@@ -27,25 +27,39 @@ fn main() {
     }
 }
 
-fn process_line(line: &String) -> String {
+fn process_line(line: &String, force_piped: bool) -> String {
     // list of processes to run, with input fed from output sequentially
+    if line.contains(">") {
+        let line_file = line.trim().split('>').collect::<Vec<&str>>();
+        let mut file = match File::open(line_file[1].trim()) {
+            Ok(f) => f,
+            Err(_) => {
+                //TODO: Better account for errors here
+                match File::create(line_file[1].trim()) {
+                    Ok(f) => f,
+                    Err(e) => return format!("{}", e),
+                }
+            },
+        };
+        let result = process_line(&String::from(line_file[0]), true);
+        file.write_all(result.as_bytes()).unwrap();
+        return String::new();
+    }
+
     let cmds = line.trim().split('|').collect::<Vec<&str>>();
+    let is_piped = force_piped || cmds.len() > 1;
     let mut ret = String::new();
     if cmds.len() == 0 {
-        return ret;
-    }
-    if cmds.len() == 1 {
-        ret = process(
-            String::from(cmds[0].trim())
-                .split(' ')
-                .collect::<Vec<&str>>());
         return ret;
     }
     ret = execute_p(String::from(cmds[0].trim())
                         .split(' ')
                         .collect::<Vec<&str>>(),
                         None,
-                        true);
+                        is_piped);
+    if cmds.len() == 1 {
+        return ret;
+    }
     for i in 1..cmds.len() - 1 {
         let input = ret;
         ret = execute_p(
@@ -60,18 +74,7 @@ fn process_line(line: &String) -> String {
                 .split(' ')
                 .collect::<Vec<&str>>(),
                 Some(input),
-                false)
-}
-
-fn process(words: Vec<&str>) -> String {
-    if words.len() == 0 {
-        return String::from("");
-    }
-    execute(words)
-}
-    
-fn execute(words: Vec<&str>) -> String {
-    execute_p(words, None, false)
+                force_piped)
 }
 
 fn execute_p(words: Vec<&str>, pin: Option<String>, piped: bool) -> String {
